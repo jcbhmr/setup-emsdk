@@ -18,12 +18,15 @@ const octokit = token
     });
 
 const versionRaw = core.getInput("emsdk-version");
-const releases = await octokit.paginate(octokit.rest.repos.listTags, {
+const tags = await octokit.paginate(octokit.rest.repos.listTags, {
   owner: "emscripten-core",
   repo: "emsdk",
 });
-const versions = releases.map((tag) => tag.name);
-const version = semver.maxSatisfying(versions, versionRaw)!;
+const versions = tags.map((tag) => tag.name);
+const version = semver.maxSatisfying(
+  versions,
+  versionRaw === "latest" ? "*" : versionRaw
+)!;
 core.debug(`Resolved version: v${version}`);
 if (!version) throw new DOMException(`${versionRaw} resolved to ${version}`);
 
