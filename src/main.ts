@@ -55,15 +55,19 @@ if (!found) {
     );
     await tc.extractTar(dl, emsdkDir);
 
+    if (process.arch !== "x64") {
+      throw new DOMException(`emsdk only supports x86_64`);
+    }
+
     const scriptExt = process.platform === "win32" ? ".bat" : "";
     await $({
       stdio: "inherit",
       cwd: emsdkDir,
-    })`./emsdk${scriptExt} install ${version}`;
+    })`./emsdk${scriptExt} install sdk-${version}-64bit`;
     await $({
       stdio: "inherit",
       cwd: emsdkDir,
-    })`./emsdk${scriptExt} activate ${version}`;
+    })`./emsdk${scriptExt} activate sdk-${version}-64bit`;
 
     const { all } = await $({
       all: true,
