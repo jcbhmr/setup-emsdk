@@ -1,116 +1,101 @@
-import * as core from '@actions/core';
-import * as exec from '@actions/exec';
-import * as tc from '@actions/tool-cache';
-import * as cache from '@actions/cache';
-import * as io from '@actions/io';
-import * as os from 'os';
-import * as fs from 'fs';
-import * as path from 'path';
-import { envRegex, pathRegex } from './matchers'
+#!/usr/bin/env node
+import * as core from "@actions/core";
+import * as github from "@actions/github";
+import * as tc from "@actions/tool-cache";
+import * as semver from "semver";
+import { createUnauthenticatedAuth } from "@octokit/auth-unauthenticated";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
+import { $ } from "execa";
+import * as cache from "@actions/cache";
 
-async function run() {
-  try {
-    const emArgs = {
-      version: await core.getInput("version"),
-      noInstall: await core.getInput("no-install"),
-      noCache: await core.getInput("no-cache"),
-      actionsCacheFolder: await core.getInput("actions-cache-folder"),
-      cacheKey: await core.getInput("cache-key"),
-      // XXX: update-tags is deprecated and used for backwards compatibility.
-      update: await core.getInput("update") || await core.getInput("update-tags")
-    };
+const token = core.getInput("emsdk-token");
+const octokit = token
+  ? github.getOctokit(token)
+  : github.getOctokit(undefined!, {
+      authStrategy: createUnauthenticatedAuth,
+      auth: { reason: "no 'emsdk-token' input" },
+    });
 
-    let emsdkFolder;
-    let foundInCache = false;
+const versionRaw = core.getInput("emsdk-version");
+let version: string;
+if (versionRaw === "latest") {
+  const { data } = await octokit.rest.repos.getLatestRelease({
+    owner: "emscripten-core",
+    repo: "emsdk",
+  });
+  version = data.tag_name.slice(1);
+} else {
+  const releases = await octokit.paginate(octokit.rest.repos.listReleases, {
+    owner: "emscripten-core",
+    repo: "emsdk",
+  });
+  const versions = releases.map((release) => release.tag_name.slice(1));
+  version = semver.maxSatisfying(versions, versionRaw)!;
+}
+core.debug(`Resolved version: v${version}`);
+if (!version) throw new DOMException(`${versionRaw} resolved to ${version}`);
 
-    if (emArgs.version !== "latest" && emArgs.version !== "tot" && emArgs.noCache === "false" && !emArgs.actionsCacheFolder) {
-      emsdkFolder = await tc.find('emsdk', emArgs.version, os.arch());
-    }
+const workflowCache = core.getBooleanInput("cache");
 
-    const cacheKey = emArgs.cacheKey || `${process.env.GITHUB_WORKFLOW}-${emArgs.version}-${os.platform()}-${os.arch()}`;
-    if (emArgs.actionsCacheFolder && process.env.GITHUB_WORKSPACE) {
-      const fullCachePath = path.join(process.env.GITHUB_WORKSPACE, emArgs.actionsCacheFolder);
-      try {
-        try {
-         fs.accessSync(path.join(fullCachePath, 'emsdk-main', 'emsdk'), fs.constants.X_OK);
-        } catch {
-          await cache.restoreCache([emArgs.actionsCacheFolder], cacheKey);
-        }
-        fs.accessSync(path.join(fullCachePath, 'emsdk-main', 'emsdk'), fs.constants.X_OK);
-        emsdkFolder = fullCachePath;
-        foundInCache = true;
-      } catch {
-        core.warning(`No cached files found at path "${fullCachePath}" - downloading and caching emsdk.`);
-        await io.rmRF(fullCachePath);
-        // core.debug(fs.readdirSync(fullCachePath + '/emsdk-main').toString());
+let found = tc.find("emsdk", version);
+let cacheHit = !!found;
+if (!found) {
+  const emsdkDir = join(process.env.HOME!, `emsdk-${version}`);
+  await mkdir(emsdkDir, { recursive: true });
+
+  install_emsdk: {
+    if (workflowCache) {
+      const primaryKey = `emsdk-${version}`;
+      core.saveState("cache-key", primaryKey);
+      const hitKey = await cache.restoreCache([emsdkDir], primaryKey);
+      if (hitKey) {
+        found = emsdkDir;
+        cacheHit = true;
+        break install_emsdk;
       }
     }
 
-    if (!emsdkFolder) {
-      const emsdkArchive = await tc.downloadTool("https://github.com/emscripten-core/emsdk/archive/main.zip");
-      emsdkFolder = await tc.extractZip(emsdkArchive);
-    } else {
-      foundInCache = true;
-    }
+    const dl = await tc.downloadTool(
+      `https://github.com/emscripten-core/emsdk/archive/${version}.tar.gz`
+    );
+    await tc.extractTar(dl, emsdkDir);
 
-    let emsdk = path.join(emsdkFolder, 'emsdk-main', 'emsdk');
+    const scriptExt = process.platform === "win32" ? ".bat" : "";
+    await $({
+      stdio: "inherit",
+      cwd: emsdkDir,
+    })`./emsdk${scriptExt} install ${version}`;
+    await $({
+      stdio: "inherit",
+      cwd: emsdkDir,
+    })`./emsdk${scriptExt} activate ${version}`;
 
-    if (os.platform() === "win32") {
-      emsdk = `powershell ${path.join(emsdkFolder, 'emsdk-main', 'emsdk.ps1')}`;
-    }
+    const { all } = await $({
+      all: true,
+      cwd: emsdkDir,
+    })`./emsdk${scriptExt} construct_env`;
 
-    if (emArgs.noInstall === "true") {
-      core.addPath(path.join(emsdkFolder, 'emsdk-main'));
-      core.exportVariable("EMSDK", path.join(emsdkFolder, 'emsdk-main'));
-      return;
-    }
+    core.info(`Got env vars:\n${all}`);
 
-    if (!foundInCache) {
-      if (emArgs.update) {
-        await exec.exec(`${emsdk} update`);
+    for (const line of all!.split(/\r?\n/g)) {
+      let match: RegExpMatchArray | null;
+      if ((match = line.match(/PATH \+= (.+)/))) {
+        core.addPath(match[1]);
+      } else if ((match = line.match(/(\S) = (.+)/))) {
+        core.exportVariable(match[1], match[2]);
       }
-
-      await exec.exec(`${emsdk} install ${emArgs.version}`);
-
-      if (emArgs.version !== "latest" && emArgs.version !== "tot" && emArgs.noCache === "false" && !emArgs.actionsCacheFolder) {
-        await tc.cacheDir(emsdkFolder, 'emsdk', emArgs.version, os.arch());
-      }
     }
 
-    await exec.exec(`${emsdk} activate ${emArgs.version}`);
-    const envListener = (message) => {
-      const pathResult = pathRegex.exec(message);
-
-      if (pathResult) {
-        core.addPath(pathResult[1]);
-        return;
-      }
-
-      const envResult = envRegex.exec(message);
-
-      if (envResult) {
-        core.exportVariable(envResult[1], envResult[2]);
-        return;
-      }
-    };
-    await exec.exec(`${emsdk} construct_env`, [], {listeners: {stdline: envListener, errline: envListener}})
-
-    if (emArgs.actionsCacheFolder && !foundInCache && process.env.GITHUB_WORKSPACE) {
-      fs.mkdirSync(path.join(process.env.GITHUB_WORKSPACE, emArgs.actionsCacheFolder), { recursive: true });
-      await io.cp(path.join(emsdkFolder, 'emsdk-main'), path.join(process.env.GITHUB_WORKSPACE, emArgs.actionsCacheFolder), { recursive: true })
-      await cache.saveCache([emArgs.actionsCacheFolder], cacheKey);
-    }
-  } catch (error) {
-    if (error &&
-      typeof error === "object" &&
-      "message" in error &&
-      (
-        typeof error.message === "string" ||
-        error.message instanceof Error
-      )) {
-      core.setFailed(error.message);
+    if (workflowCache) {
+      const primaryKey = core.getState("cache-key");
+      await cache.saveCache([emsdkDir], primaryKey);
     }
   }
-}
 
-run();
+  found = await tc.cacheDir(emsdkDir, "emsdk", version);
+}
+core.setOutput("cache-hit", cacheHit);
+core.addPath(found);
+core.setOutput("emsdk-version", version);
+core.info(`✅ emsdk v${version} installed!`);
