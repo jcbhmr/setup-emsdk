@@ -57,7 +57,7 @@ if (!found) {
     }
 
     const dl = await tc.downloadTool(
-      `https://github.com/emscripten-core/emsdk/archive/${version}.tar.gz`
+      `https://github.com/emscripten-core/emsdk/archive/${version}.tar.gz`,
     );
     await tc.extractTar(dl, emsdkDir);
 
