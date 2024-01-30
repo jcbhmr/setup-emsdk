@@ -1,6 +1,6 @@
-# setup-emsdk
+# Setup Emscripten toolchain
 
-This actions step downloads emsdk and installs a version of Emscripten.
+⚡ Install and configure Emscripten for GitHub Actions
 
 ## Usage
 
@@ -31,7 +31,7 @@ To just cache emsdk:
     # This is the name of the cache folder.
     # The cache folder will be placed in the build directory,
     #  so make sure it doesn't conflict with anything!
-    actions-cache-folder: 'emsdk-cache'
+    actions-cache-folder: "emsdk-cache"
 
 - name: Verify
   run: emcc -v
@@ -42,7 +42,7 @@ If you want to also cache system libraries generated during build time:
 ```yaml
 env:
   EM_VERSION: 1.39.18
-  EM_CACHE_FOLDER: 'emsdk-cache'
+  EM_CACHE_FOLDER: "emsdk-cache"
 
 jobs:
   test:
@@ -69,8 +69,8 @@ jobs:
 
 ```yaml
 version:
-  description: 'Version to install'
-  default: 'latest'
+  description: "Version to install"
+  default: "latest"
 no-install:
   description: "If true will not download any version of Emscripten. emsdk will still be added to PATH."
   default: false
@@ -79,7 +79,7 @@ no-cache:
   default: false
 actions-cache-folder:
   description: "Directory to cache emsdk in. This folder will go under $GITHUB_HOME (I.e. build dir) and be cached using @actions/cache."
-  default: ''
+  default: ""
 update:
   description: "Fetch package information for all the new tools and SDK versions"
   default: false
