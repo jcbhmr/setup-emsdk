@@ -16,5 +16,10 @@
     "typescript": "^5.0.0"
   },
   "name": "setup-emsdk",
-  "module": "index.ts"
+  "packageManager": "bun@1.0.25",
+  "scripts": {
+    "build": "bun build ./src/main.ts --outdir=dist --target=node",
+    "format": "prettier -w .",
+    "lint": "tsc --noEmit"
+  }
 }
