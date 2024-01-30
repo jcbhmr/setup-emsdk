@@ -4,7 +4,7 @@ import * as github from "@actions/github";
 import * as tc from "@actions/tool-cache";
 import * as semver from "semver";
 import { createUnauthenticatedAuth } from "@octokit/auth-unauthenticated";
-import { mkdir } from "node:fs/promises";
+import { cp, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "execa";
 import * as cache from "@actions/cache";
@@ -53,7 +53,8 @@ if (!found) {
     const dl = await tc.downloadTool(
       `https://github.com/emscripten-core/emsdk/archive/${version}.tar.gz`
     );
-    await tc.extractTar(dl, emsdkDir);
+    const extracted = await tc.extractTar(dl);
+    await cp(join(extracted, `emsdk-${version}`), emsdkDir, { recursive: true, force: true });
 
     if (process.arch !== "x64") {
       throw new DOMException(`emsdk only supports x86_64`);
