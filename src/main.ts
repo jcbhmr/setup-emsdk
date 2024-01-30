@@ -18,21 +18,12 @@ const octokit = token
     });
 
 const versionRaw = core.getInput("emsdk-version");
-let version: string;
-if (versionRaw === "latest") {
-  const { data } = await octokit.rest.repos.getLatestRelease({
-    owner: "emscripten-core",
-    repo: "emsdk",
-  });
-  version = data.tag_name.slice(1);
-} else {
-  const releases = await octokit.paginate(octokit.rest.repos.listReleases, {
-    owner: "emscripten-core",
-    repo: "emsdk",
-  });
-  const versions = releases.map((release) => release.tag_name.slice(1));
-  version = semver.maxSatisfying(versions, versionRaw)!;
-}
+const releases = await octokit.paginate(octokit.rest.repos.listTags, {
+  owner: "emscripten-core",
+  repo: "emsdk",
+});
+const versions = releases.map((tag) => tag.name);
+const version = semver.maxSatisfying(versions, versionRaw)!;
 core.debug(`Resolved version: v${version}`);
 if (!version) throw new DOMException(`${versionRaw} resolved to ${version}`);
 
@@ -57,7 +48,7 @@ if (!found) {
     }
 
     const dl = await tc.downloadTool(
-      `https://github.com/emscripten-core/emsdk/archive/${version}.tar.gz`,
+      `https://github.com/emscripten-core/emsdk/archive/${version}.tar.gz`
     );
     await tc.extractTar(dl, emsdkDir);
 
