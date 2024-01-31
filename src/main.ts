@@ -42,12 +42,10 @@ if (!found) {
   found = await tc.cacheDir(found, "emsdk", version);
   install_emsdk: try {
     if (workflowCache) {
-      core.saveState("cache-key", primaryKey);
       core.info(`Trying to restore cache with key: ${primaryKey}`);
       const hitKey = await cache.restoreCache([found], primaryKey);
       if (hitKey) {
         core.info(`Cache hit on key: ${hitKey}`);
-        found = found;
         cacheHit = true;
         break install_emsdk;
       }
@@ -105,5 +103,5 @@ core.addPath(found);
 core.setOutput("emsdk-version", version);
 core.info(`✅ emsdk v${version} installed!`);
 
-// This is an issue with '@actions/cache' somehow? https://github.com/actions/toolkit/issues/658
+// '@actions/cache' hangs for a while unless explicitly exited. 🤷‍♀️
 process.exit();
