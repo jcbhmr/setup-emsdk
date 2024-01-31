@@ -87,13 +87,15 @@ const { all } = await $({
   all: true,
   cwd: found,
 })`./emsdk${batExt} construct_env`;
-core.info(`Got env vars:\n${all}`);
+core.group("construct_env", async () => core.info(all!));
 
 for (const line of all!.split(/\r?\n/g)) {
   let match: RegExpMatchArray | null;
   if ((match = line.match(/PATH \+= (.+)/))) {
+    core.info(`Adding ${match[1]} to PATH`);
     core.addPath(match[1]);
   } else if ((match = line.match(/(\S) = (.+)/))) {
+    core.info(`Setting ${match[1]} to ${match[2]}`);
     core.exportVariable(match[1], match[2]);
   }
 }
