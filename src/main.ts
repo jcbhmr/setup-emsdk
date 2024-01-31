@@ -40,14 +40,14 @@ if (!found) {
   found = join(process.env.RUNNER_TEMP!, Math.random().toString());
   await mkdir(found, { recursive: true });
   found = await tc.cacheDir(found, "emsdk", version);
-  install_emsdk: try {
+  my_block: try {
     if (workflowCache) {
       core.info(`Trying to restore cache with key: ${primaryKey}`);
       const hitKey = await cache.restoreCache([found], primaryKey);
       if (hitKey) {
         core.info(`Cache hit on key: ${hitKey}`);
         cacheHit = true;
-        break install_emsdk;
+        break my_block;
       }
     }
 
