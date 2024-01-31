@@ -4,7 +4,7 @@ import * as github from "@actions/github";
 import * as tc from "@actions/tool-cache";
 import * as semver from "semver";
 import { createUnauthenticatedAuth } from "@octokit/auth-unauthenticated";
-import { cp, mkdir } from "node:fs/promises";
+import { cp, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "execa";
 import * as cache from "@actions/cache";
@@ -32,68 +32,73 @@ if (!version) throw new DOMException(`${versionRaw} resolved to ${version}`);
 
 const workflowCache = core.getBooleanInput("cache");
 
+const batExt = process.platform === "win32" ? ".bat" : "";
+
 let found = tc.find("emsdk", version);
 let cacheHit = !!found;
 if (!found) {
-  const emsdkDir = join(process.env.HOME!, `emsdk-${version}`);
-  await mkdir(emsdkDir, { recursive: true });
-
-  install_emsdk: {
+  found = join(process.env.RUNNER_TEMP!, Math.random().toString());
+  await mkdir(found, { recursive: true });
+  found = await tc.cacheDir(found, "emsdk", version);
+  install_emsdk: try {
     if (workflowCache) {
       const primaryKey = `emsdk-${version}`;
       core.saveState("cache-key", primaryKey);
-      const hitKey = await cache.restoreCache([emsdkDir], primaryKey);
+      const hitKey = await cache.restoreCache([found], primaryKey);
       if (hitKey) {
-        found = emsdkDir;
+        found = found;
         cacheHit = true;
         break install_emsdk;
       }
     }
 
-    const dl = await tc.downloadTool(
+    let archive = await tc.downloadTool(
       `https://github.com/emscripten-core/emsdk/archive/${version}.tar.gz`
     );
-    const extracted = await tc.extractTar(dl);
-    await cp(join(extracted, `emsdk-${version}`), emsdkDir, { recursive: true, force: true });
+    archive = await tc.extractTar(archive);
+    await cp(join(archive, `emsdk-${version}`), found, {
+      recursive: true,
+      force: true,
+    });
 
     if (process.arch !== "x64") {
       throw new DOMException(`emsdk only supports x86_64`);
     }
 
-    const scriptExt = process.platform === "win32" ? ".bat" : "";
     await $({
       stdio: "inherit",
-      cwd: emsdkDir,
-    })`./emsdk${scriptExt} install sdk-${version}-64bit`;
+      cwd: found,
+    })`./emsdk${batExt} install sdk-${version}-64bit`;
     await $({
       stdio: "inherit",
-      cwd: emsdkDir,
-    })`./emsdk${scriptExt} activate sdk-${version}-64bit`;
-
-    const { all } = await $({
-      all: true,
-      cwd: emsdkDir,
-    })`./emsdk${scriptExt} construct_env`;
-
-    core.info(`Got env vars:\n${all}`);
-
-    for (const line of all!.split(/\r?\n/g)) {
-      let match: RegExpMatchArray | null;
-      if ((match = line.match(/PATH \+= (.+)/))) {
-        core.addPath(match[1]);
-      } else if ((match = line.match(/(\S) = (.+)/))) {
-        core.exportVariable(match[1], match[2]);
-      }
-    }
+      cwd: found,
+    })`./emsdk${batExt} activate sdk-${version}-64bit`;
 
     if (workflowCache) {
       const primaryKey = core.getState("cache-key");
-      await cache.saveCache([emsdkDir], primaryKey);
+      await cache.saveCache([found], primaryKey);
     }
+  } catch (error) {
+    await rm(found, { recursive: true, force: true });
+    throw error;
   }
-
-  found = await tc.cacheDir(emsdkDir, "emsdk", version);
 }
+
+const { all } = await $({
+  all: true,
+  cwd: found,
+})`./emsdk${batExt} construct_env`;
+core.info(`Got env vars:\n${all}`);
+
+for (const line of all!.split(/\r?\n/g)) {
+  let match: RegExpMatchArray | null;
+  if ((match = line.match(/PATH \+= (.+)/))) {
+    core.addPath(match[1]);
+  } else if ((match = line.match(/(\S) = (.+)/))) {
+    core.exportVariable(match[1], match[2]);
+  }
+}
+
 core.setOutput("cache-hit", cacheHit);
 core.addPath(found);
 core.setOutput("emsdk-version", version);
