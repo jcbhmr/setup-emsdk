@@ -94,7 +94,8 @@ for (const line of all!.split(/\r?\n/g)) {
   if ((match = line.match(/PATH \+= (.+)/))) {
     core.info(`Adding ${match[1]} to PATH`);
     core.addPath(match[1]);
-  } else if ((match = line.match(/(\S) = (.+)/))) {
+  } else if ((match = line.match(/(\S+) = (.+)/))) {
+    if (match[1] === "PATH") continue;
     core.info(`Setting ${match[1]} to ${match[2]}`);
     core.exportVariable(match[1], match[2]);
   }
