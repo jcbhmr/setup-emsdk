@@ -31,7 +31,7 @@ core.debug(`Resolved version: v${version}`);
 if (!version) throw new DOMException(`${versionRaw} resolved to ${version}`);
 
 const workflowCache = core.getBooleanInput("cache");
-
+const primaryKey = `emsdk-${version}`;
 const batExt = process.platform === "win32" ? ".bat" : "";
 
 let found = tc.find("emsdk", version);
@@ -42,8 +42,8 @@ if (!found) {
   found = await tc.cacheDir(found, "emsdk", version);
   install_emsdk: try {
     if (workflowCache) {
-      const primaryKey = `emsdk-${version}`;
       core.saveState("cache-key", primaryKey);
+      core.info(`Restoring cache with key: ${primaryKey}`);
       const hitKey = await cache.restoreCache([found], primaryKey);
       if (hitKey) {
         found = found;
@@ -75,7 +75,7 @@ if (!found) {
     })`./emsdk${batExt} activate sdk-${version}-64bit`;
 
     if (workflowCache) {
-      const primaryKey = core.getState("cache-key");
+      core.info(`Saving cache with key: ${primaryKey}`);
       await cache.saveCache([found], primaryKey);
     }
   } catch (error) {
