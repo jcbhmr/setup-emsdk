@@ -36,4 +36,5 @@ jobs:
       - run: bun run build
       - uses: ./
       - run: emcc test.c
-      - run: node a.out.js
+      - run: mv a.out.js a.out.cjs
+      - run: node a.out.cjs
