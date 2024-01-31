@@ -26,3 +26,4 @@ outputs:
 runs:
   using: node20
   main: dist/main.js
+  post: dist/post.js
