@@ -87,7 +87,7 @@ const { all } = await $({
   all: true,
   cwd: found,
 })`./emsdk${batExt} construct_env`;
-core.group("construct_env", async () => core.info(all!));
+await core.group("construct_env", async () => core.info(all!));
 
 for (const line of all!.split(/\r?\n/g)) {
   let match: RegExpMatchArray | null;
